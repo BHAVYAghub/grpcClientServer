@@ -5,48 +5,48 @@ import (
 	"flag"
 	"fmt"
 	"google.golang.org/grpc"
-	"log"
 	"os"
 	"protoPrac2/todo"
 	"strings"
 )
 
-func main(){
-
+func main() {
 	flag.Parse()
-	if flag.NArg()<1{
-		fmt.Fprintln(os.Stderr,"missing subcommand: list or add")
+	if flag.NArg() < 1 {
+		fmt.Fprintln(os.Stderr, "missing subcommand: list or add")
 		os.Exit(1)
 	}
 
-	conn,err:=grpc.Dial(":8888",grpc.WithInsecure())
-	if err!=nil{
-		log.Fatalf("could not connect to backend: %v",err)
+	conn, err := grpc.Dial(":8888", grpc.WithInsecure())
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "could not connect to backend: %v\n", err)
+		os.Exit(1)
 	}
-	client:=todo.NewTasksClient(conn)
-	switch cmd:=flag.Arg(0);cmd {
+	client := todo.NewTasksClient(conn)
+
+	switch cmd := flag.Arg(0); cmd {
 	case "list":
-		err=list(context.Background(),client)
+		err = list(context.Background(), client)
 	case "add":
-		err=add(strings.Join(flag.Args()[1:]," "))
+		err = add(context.Background(), client, strings.Join(flag.Args()[1:], " "))
 	default:
-		err=fmt.Errorf("unknown subcommand %s",cmd)
+		err = fmt.Errorf("unknown subcommand %s", cmd)
 	}
-	if err!=nil{
-		fmt.Fprintln(os.Stderr,err)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
-type length int64
-
-const (
-	sizeOfLength = 8
-	dbPath       = "mydb.pb"
-)
-func add(text string) error{
-
-	return fmt.Errorf("add not implemented")
+func add(ctx context.Context, client todo.TasksClient, text string) error {
+_, err := client.Add(ctx, &todo.Text{Text: text})
+if err != nil {
+return fmt.Errorf("could not add task in the backend: %v", err)
 }
+
+fmt.Println("task added successfully")
+return nil
+}
+
 func list(ctx context.Context,client todo.TasksClient)error{
 	l,err:=client.List(ctx,&todo.Void{})
 	if err!=nil{

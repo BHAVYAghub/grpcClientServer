@@ -19,6 +19,7 @@ const _ = grpc.SupportPackageIsVersion7
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type TasksClient interface {
 	List(ctx context.Context, in *Void, opts ...grpc.CallOption) (*TaskList, error)
+	Add(ctx context.Context, in *Text, opts ...grpc.CallOption) (*Task, error)
 }
 
 type tasksClient struct {
@@ -38,11 +39,21 @@ func (c *tasksClient) List(ctx context.Context, in *Void, opts ...grpc.CallOptio
 	return out, nil
 }
 
+func (c *tasksClient) Add(ctx context.Context, in *Text, opts ...grpc.CallOption) (*Task, error) {
+	out := new(Task)
+	err := c.cc.Invoke(ctx, "/todo.Tasks/Add", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // TasksServer is the server API for Tasks service.
 // All implementations must embed UnimplementedTasksServer
 // for forward compatibility
 type TasksServer interface {
 	List(context.Context, *Void) (*TaskList, error)
+	Add(context.Context, *Text) (*Task, error)
 	mustEmbedUnimplementedTasksServer()
 }
 
@@ -52,6 +63,9 @@ type UnimplementedTasksServer struct {
 
 func (UnimplementedTasksServer) List(context.Context, *Void) (*TaskList, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method List not implemented")
+}
+func (UnimplementedTasksServer) Add(context.Context, *Text) (*Task, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Add not implemented")
 }
 func (UnimplementedTasksServer) mustEmbedUnimplementedTasksServer() {}
 
@@ -84,6 +98,24 @@ func _Tasks_List_Handler(srv interface{}, ctx context.Context, dec func(interfac
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Tasks_Add_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Text)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TasksServer).Add(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/todo.Tasks/Add",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TasksServer).Add(ctx, req.(*Text))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Tasks_ServiceDesc is the grpc.ServiceDesc for Tasks service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -94,6 +126,10 @@ var Tasks_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "List",
 			Handler:    _Tasks_List_Handler,
+		},
+		{
+			MethodName: "Add",
+			Handler:    _Tasks_Add_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

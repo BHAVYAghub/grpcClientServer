@@ -3,7 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
-	"encoding/gob"
+	"encoding/binary"
 	"fmt"
 	"github.com/golang/protobuf/proto"
 	"google.golang.org/grpc"
@@ -13,13 +13,6 @@ import (
 	"os"
 	"protoPrac2/todo"
 )
-
-type taskServer struct {
-	todo.UnimplementedTasksServer
-}
-func (t taskServer) List(ctx context.Context, void *todo.Void) (*todo.TaskList, error){
-	return nil,fmt.Errorf("not implemented till now")
-}
 
 func main(){
 	srv:=grpc.NewServer()
@@ -31,65 +24,69 @@ func main(){
 	}
 	log.Fatal(srv.Serve(l))
 }
-type length int64
-
 const (
 	sizeOfLength = 8
 	dbPath       = "mydb.pb"
 )
-func add(text string) error{
-	task:=&todo.Task{
-		Text: text,
+type length int64
+var endianness = binary.LittleEndian
+func (taskServer) Add(ctx context.Context, text *todo.Text) (*todo.Task, error) {
+	task := &todo.Task{
+		Text: text.Text,
 		Done: false,
 	}
-	b,err:=proto.Marshal(task)
-	if err!=nil{
-		return fmt.Errorf("could not encode task: %v",task)
+
+	b, err := proto.Marshal(task)
+	if err != nil {
+		return nil, fmt.Errorf("could not encode task: %v", err)
 	}
-	f,err:=os.OpenFile(dbPath,os.O_WRONLY | os.O_CREATE| os.O_APPEND,0666)
-	if err!=nil{
-		return fmt.Errorf("could not open file %s : %v",dbPath,err)
+
+	f, err := os.OpenFile(dbPath, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		return nil, fmt.Errorf("could not open %s: %v", dbPath, err)
 	}
-	if err:=gob.NewEncoder(f).Encode(int64(len(b)));err!=nil{
-		return fmt.Errorf("could not encode length of the message: %v",err)
+
+	if err := binary.Write(f, endianness, length(len(b))); err != nil {
+		return nil, fmt.Errorf("could not encode length of message: %v", err)
 	}
-	_,err=f.Write(b)
-	if err!=nil{
-		return fmt.Errorf("could not write task to file: %v",err)
+	_, err = f.Write(b)
+	if err != nil {
+		return nil, fmt.Errorf("could not write task to file: %v", err)
 	}
-	if err:=f.Close();err!=nil{
-		return fmt.Errorf("could not close file %s: %v",dbPath,err)
+
+	if err := f.Close(); err != nil {
+		return nil, fmt.Errorf("could not close file %s: %v", dbPath, err)
 	}
-	return nil
+	return task, nil
 }
-func list()error{
-
-	b,err := ioutil.ReadFile(dbPath)
-	if err!=nil{
-		return fmt.Errorf("could not read %s: %v",dbPath,err)
+type taskServer struct {
+	todo.UnimplementedTasksServer
+}
+func (taskServer) List(ctx context.Context, void *todo.Void) (*todo.TaskList, error) {
+	b, err := ioutil.ReadFile(dbPath)
+	if err != nil {
+		return nil, fmt.Errorf("could not read %s: %v", dbPath, err)
 	}
-	var task todo.Task
 
-	for{
-		if len(b)==0{
-			return nil
-		}else if len(b)<4{
-			return fmt.Errorf("remaining odd %d bytes",len(b))
+	var tasks todo.TaskList
+	for {
+		if len(b) == 0 {
+			return &tasks, nil
+		} else if len(b) < sizeOfLength {
+			return nil, fmt.Errorf("remaining odd %d bytes, what to do?", len(b))
 		}
-		var length int64
-		if err:=gob.NewDecoder(bytes.NewReader(b[:4])).Decode(&length);err!=nil{
-			return fmt.Errorf("could not decode message length: %v",err)
+
+		var l length
+		if err := binary.Read(bytes.NewReader(b[:sizeOfLength]), endianness, &l); err != nil {
+			return nil, fmt.Errorf("could not decode message length: %v", err)
 		}
-		b=b[4:]
-		if err:=proto.Unmarshal(b[:length],&task);err!=nil{
-			return fmt.Errorf("could not raed task: %v",err)
+		b = b[sizeOfLength:]
+
+		var task todo.Task
+		if err := proto.Unmarshal(b[:l], &task); err != nil {
+			return nil, fmt.Errorf("could not read task: %v", err)
 		}
-		b=b[length:]
-		if task.Done {
-			fmt.Printf("done")
-		}else{
-			fmt.Printf("not done ")
-		}
-		fmt.Printf("%s\n",task.Text)
+		b = b[l:]
+		tasks.Tasks = append(tasks.Tasks, &task)
 	}
 }
